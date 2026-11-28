@@ -1,5 +1,5 @@
 /* Wanna Do Service Worker: alles offline verfügbar, Updates auf Knopfdruck */
-const VERSION = "wannado-1.2.0";
+const VERSION = "wannado-1.3.0";
 const ASSETS = [
   "./",
   "index.html",

@@ -2,7 +2,7 @@
 /* Wanna Do · Notizen & Aufgaben
    Daten: nur lokal (IndexedDB, Rückfall localStorage). Backup als JSON-Datei über das iOS-Teilen-Menü. */
 
-const APP_VERSION = "1.2.0";
+const APP_VERSION = "1.3.0";
 const $ = (s, el = document) => el.querySelector(s);
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -20,8 +20,23 @@ const ICONS = {
   book: '<path d="M4 5c3-1.5 6-1.5 9 0v16c-3-1.5-6-1.5-9 0zM13 5c3-1.5 6-1.5 9 0v16c-3-1.5-6-1.5-9 0z"/>',
   star: '<path d="M13 3l2.8 6 6.2.6-4.7 4.2 1.4 6.2L13 16.8 7.3 20l1.4-6.2L4 9.6l6.2-.6z"/>',
   home: '<path d="M4 11l9-7 9 7v10H4zM10 21v-6h6v6"/>',
-  pen: '<path d="M16 4l5 5L9 21H4v-5z"/>'
+  pen: '<path d="M16 4l5 5L9 21H4v-5z"/>',
+  cal: '<rect x="3" y="5" width="20" height="17" rx="3"/><path d="M3 10h20M8 3v4M18 3v4"/><circle cx="13" cy="16" r="1.4"/>'
 };
+/* Farben der Bereiche: Hintergrund + Schrift/Symbol */
+const TONES = {
+  sage: { name: "Salbei", bg: "#EDEEDF", ink: "#6B7A4F" },
+  matcha: { name: "Matcha", bg: "#DFE5CB", ink: "#55663A" },
+  sand: { name: "Sand", bg: "#F3EAD9", ink: "#8C7660" },
+  clay: { name: "Ton", bg: "#F2E2D6", ink: "#A97B62" },
+  rose: { name: "Rosé", bg: "#F2DFDC", ink: "#A3655A" },
+  sky: { name: "Nebel", bg: "#DFE8E7", ink: "#567775" },
+  lilac: { name: "Flieder", bg: "#E8E2EC", ink: "#7A6888" },
+  stone: { name: "Stein", bg: "#E6E1D9", ink: "#776D61" },
+  cream: { name: "Creme", bg: "#FBF8F2", ink: "#6B7A4F" }
+};
+const DEFAULT_TONES = ["sage", "sand", "clay"];
+const toneStyle = k => { const t = TONES[k] || TONES.sage; return `--tile-bg:${t.bg};--tile-ink:${t.ink}`; };
 const icon = (k, cls = "tile-icon") => `<svg class="${cls}" viewBox="0 0 26 26" aria-hidden="true">${ICONS[k] || ICONS.leaf}</svg>`;
 const SVG_PLUS = '<svg viewBox="0 0 20 20"><path d="M10 4v12M4 10h12"/></svg>';
 const SVG_CHECK = '<svg viewBox="0 0 16 16"><path d="M3 8.5l3.2 3L13 4.5"/></svg>';
@@ -58,9 +73,9 @@ function freshState() {
     schema: 2, createdAt: Date.now(), grown: 0, lastBackup: null,
     sections: [
       { id: "heute", name: "Heute", icon: "leaf", fixed: true },
-      { id: "woche", name: "Woche", icon: "week" },
-      { id: "monat", name: "Monat", icon: "month" },
-      { id: "geschenke", name: "Geschenkideen", icon: "gift" }
+      { id: "woche", name: "Woche", icon: "week", color: "sage" },
+      { id: "monat", name: "Monat", icon: "month", color: "sand" },
+      { id: "geschenke", name: "Geschenkideen", icon: "gift", color: "clay" }
     ],
     tasks: [], dismissed: {}
   };
@@ -70,12 +85,13 @@ function sanitize(s) {
   const out = Object.assign(base, typeof s === "object" && s ? s : {});
   out.sections = (Array.isArray(out.sections) ? out.sections : base.sections)
     .filter(x => x && typeof x.id === "string" && typeof x.name === "string")
-    .map(x => ({ id: x.id, name: x.name.slice(0, 60), icon: ICONS[x.icon] ? x.icon : "leaf", fixed: x.id === "heute" }));
-  if (!out.sections.some(x => x.id === "heute")) out.sections.unshift({ id: "heute", name: "Heute", icon: "leaf", fixed: true });
+    .map(x => ({ id: x.id, name: x.name.slice(0, 60), icon: ICONS[x.icon] ? x.icon : "leaf", fixed: x.id === "heute", color: TONES[x.color] ? x.color : null }));
+  out.sections.filter(x => !x.fixed).forEach((x, i) => { if (!x.color) x.color = DEFAULT_TONES[i % 3]; });
+  if (!out.sections.some(x => x.id === "heute")) out.sections.unshift({ id: "heute", name: "Heute", icon: "leaf", fixed: true, color: null });
   const ids = new Set(out.sections.map(x => x.id));
   out.tasks = (Array.isArray(out.tasks) ? out.tasks : [])
     .filter(t => t && typeof t.text === "string")
-    .map(t => ({ id: String(t.id || uid()), section: ids.has(t.section) ? t.section : "heute", text: t.text.slice(0, 2000), note: typeof t.note === "string" ? t.note.slice(0, 5000) : "", done: !!t.done, createdAt: +t.createdAt || +t.at || Date.now(), doneAt: t.done ? (+t.doneAt || +t.at || Date.now()) : null }));
+    .map(t => ({ id: String(t.id || uid()), section: ids.has(t.section) ? t.section : "heute", text: t.text.slice(0, 2000), note: typeof t.note === "string" ? t.note.slice(0, 5000) : "", done: !!t.done, due: /^\d{4}-\d{2}-\d{2}$/.test(t.due) ? t.due : null, createdAt: +t.createdAt || +t.at || Date.now(), doneAt: t.done ? (+t.doneAt || +t.at || Date.now()) : null }));
   out.grown = Math.max(0, Math.floor(+out.grown || 0));
   out.dismissed = typeof out.dismissed === "object" && out.dismissed ? out.dismissed : {};
   out.schema = 2;
@@ -126,6 +142,16 @@ const WD = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag"
 const MO = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
 function fmtDate(ts) { const d = new Date(ts); return `${d.getDate()}. ${MO[d.getMonth()]} ${d.getFullYear()}, ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")} Uhr`; }
 function daysSince(ts) { return Math.floor((Date.now() - ts) / 86400000); }
+const WD_SHORT = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const parseYmd = s => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const todayYmd = () => ymd(new Date());
+function dueLabel(due) {
+  const diff = Math.round((parseYmd(due) - parseYmd(todayYmd())) / 86400000), d = parseYmd(due);
+  if (diff === 0) return "Heute"; if (diff === 1) return "Morgen"; if (diff === -1) return "Gestern";
+  return `${WD_SHORT[d.getDay()]}, ${d.getDate()}. ${MO[d.getMonth()].slice(0, 3)}${d.getFullYear() !== new Date().getFullYear() ? " " + d.getFullYear() : ""}`;
+}
 
 /* ---------- Baum ---------- */
 function rng(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
@@ -298,9 +324,9 @@ $("#toastAct").addEventListener("click", () => { const a = toastAction; $("#toas
 /* ---------- Aufgaben-Logik ---------- */
 const secById = id => state.sections.find(s => s.id === id);
 const tasksOf = (sec, done) => state.tasks.filter(t => t.section === sec && t.done === done).sort((a, b) => done ? (b.doneAt - a.doneAt) : (a.createdAt - b.createdAt));
-function addTask(section, text, note = "") {
+function addTask(section, text, note = "", due = null) {
   text = text.trim(); if (!text) return null;
-  const t = { id: uid(), section, text, note: note.trim(), done: false, createdAt: Date.now(), doneAt: null };
+  const t = { id: uid(), section, text, note: note.trim(), done: false, due: due || null, createdAt: Date.now(), doneAt: null };
   state.tasks.push(t); save(); return t;
 }
 function setDone(task, done) {
@@ -323,7 +349,7 @@ function taskRow(t) {
     <div class="task-bg">Löschen</div>
     <div class="task-fg">
       <button class="check" data-act="toggle" aria-label="${t.done ? "Wieder öffnen" : "Als erledigt markieren"}"><i>${SVG_CHECK}</i></button>
-      <button class="body" data-act="edit" aria-label="Bearbeiten: ${esc(t.text)}"><span class="txt">${esc(t.text)}</span>${t.note ? `<span class="note">${esc(t.note)}</span>` : ""}</button>
+      <button class="body" data-act="edit" aria-label="Bearbeiten: ${esc(t.text)}"><span class="txt">${esc(t.text)}</span>${t.note ? `<span class="note">${esc(t.note)}</span>` : ""}${t.due ? `<span class="due${!t.done && t.due < todayYmd() ? " late" : ""}">${icon("cal", "due-ic")}${dueLabel(t.due)}</span>` : ""}</button>
     </div></li>`;
 }
 function listBlock(sec) {
@@ -358,15 +384,16 @@ function renderToday() {
   if (active) $("#add-heute").focus();
 }
 function renderGrid() {
-  const tiles = state.sections.filter(s => !s.fixed).map((s, i) => {
+  const tiles = state.sections.filter(s => !s.fixed).map(s => {
     const open = tasksOf(s.id, false);
     const prev = open.slice(0, 3).map(t => `<li>${esc(t.text)}</li>`).join("") + (open.length > 3 ? `<li class="more">+ ${open.length - 3} weitere</li>` : "");
-    return `<button class="tile tone-${i % 3}" data-open="${esc(s.id)}">
+    return `<button class="tile" style="${toneStyle(s.color)}" data-open="${esc(s.id)}" data-tile="${esc(s.id)}">
       <span class="tile-head">${icon(s.icon)}<span class="tile-title">${esc(s.name)}</span></span>
       <span class="tile-count">${open.length ? open.length + " offen" : (state.tasks.some(t => t.section === s.id) ? "alles erledigt" : "noch leer")}</span>
       <ul class="tile-preview">${prev}</ul></button>`;
   }).join("");
   $("#grid").innerHTML = tiles + `<button class="tile tile-add" data-act="newSection">${SVG_PLUS}<span>Bereich hinzufügen</span></button>`;
+  $("#gridHint").hidden = state.sections.filter(s => !s.fixed).length < 2;
 }
 function renderBanners() {
   const out = [];
@@ -448,6 +475,15 @@ function confirmSheet({ title, text, okLabel, danger = false }) {
   });
 }
 
+function swatches(current) {
+  return `<div class="swatches">${Object.entries(TONES).map(([k, t]) => `<button type="button" class="swatch" data-act="pickColor" data-color="${k}" aria-pressed="${k === current}" aria-label="${t.name}" style="--sw-bg:${t.bg};--sw-ink:${t.ink}"><i></i></button>`).join("")}</div>`;
+}
+function moveSection(id, dir) {
+  const others = state.sections.filter(x => !x.fixed), i = others.findIndex(x => x.id === id), j = i + dir;
+  if (i < 0 || j < 0 || j >= others.length) return;
+  [others[i], others[j]] = [others[j], others[i]];
+  state.sections = state.sections.filter(x => x.fixed).concat(others); save(); haptic(); renderAll();
+}
 /* Bereich */
 function openSection(id) {
   let renaming = false;
@@ -462,6 +498,12 @@ function openSection(id) {
         <button class="close" data-close aria-label="Schließen">${SVG_CLOSE}</button>
       </div>
       ${listBlock(sec.id)}
+      ${sec.fixed ? "" : (() => { const others = state.sections.filter(x => !x.fixed), i = others.indexOf(sec); return `
+      <div class="field"><span class="label">Farbe</span>${swatches(sec.color)}</div>
+      <div class="field"><span class="label">Position im Raster</span><div class="row2">
+        <button type="button" class="btn" data-act="secMove" data-dir="-1" ${i <= 0 ? "disabled" : ""}>Nach vorne</button>
+        <button type="button" class="btn" data-act="secMove" data-dir="1" ${i >= others.length - 1 ? "disabled" : ""}>Nach hinten</button></div>
+        <small class="hint">Oder im Raster eine Kachel gedrückt halten und verschieben.</small></div>`; })()}
       ${sec.fixed ? "" : `<div class="done-tools"><button class="linkbtn" data-act="delSection" data-sec="${esc(sec.id)}" style="color:var(--danger)">Bereich löschen</button></div>`}`;
   }, {
     after: sh => {
@@ -472,6 +514,9 @@ function openSection(id) {
   s.el.addEventListener("click", e => {
     const b = e.target.closest("[data-act]"); if (!b) return;
     if (b.dataset.act === "rename") { renaming = true; s.render(); }
+    const sec = secById(id); if (!sec) return;
+    if (b.dataset.act === "pickColor") { sec.color = b.dataset.color; save(); haptic(); renderAll(); }
+    if (b.dataset.act === "secMove") moveSection(id, +b.dataset.dir);
   });
   s.el.addEventListener("submit", e => {
     if (e.target.id !== "renameForm") return;
@@ -483,15 +528,18 @@ function openSection(id) {
 }
 /* Neuer Bereich */
 function openNewSection() {
-  let chosen = "leaf";
+  let chosen = "leaf", color = Object.keys(TONES)[state.sections.length % 8];
   const s = openSheet(() => `
     <div class="sheet-head"><h2 class="sec-title">Neuer Bereich</h2><button class="close" data-close aria-label="Schließen">${SVG_CLOSE}</button></div>
     <form id="nsForm" class="actions">
       <div class="field"><span class="label">Name</span><input id="nsName" maxlength="60" placeholder="z. B. Einkauf, Ideen, Haushalt" autocomplete="off" enterkeyhint="done"></div>
       <div class="field"><span class="label">Symbol</span><div class="chips icons-pick">${Object.keys(ICONS).filter(k => k !== "pen").map(k => `<button type="button" class="chip" data-icon="${k}" aria-pressed="${k === chosen}" aria-label="${k}">${icon(k, "")}</button>`).join("")}</div></div>
+      <div class="field"><span class="label">Farbe</span>${swatches(color)}</div>
       <button class="btn primary" type="submit">Anlegen</button>
     </form>`, { focus: "#nsName", static: true });
   s.el.addEventListener("click", e => {
+    const sw = e.target.closest("[data-color]");
+    if (sw) { color = sw.dataset.color; s.el.querySelectorAll("[data-color]").forEach(x => x.setAttribute("aria-pressed", x.dataset.color === color)); return; }
     const c = e.target.closest("[data-icon]"); if (!c) return;
     chosen = c.dataset.icon;
     s.el.querySelectorAll("[data-icon]").forEach(x => x.setAttribute("aria-pressed", x.dataset.icon === chosen));
@@ -499,21 +547,24 @@ function openNewSection() {
   s.el.addEventListener("submit", e => {
     e.preventDefault(); e.stopPropagation();
     const name = $("#nsName", s.el).value.trim(); if (!name) { $("#nsName", s.el).focus(); return; }
-    const sec = { id: "s-" + uid(), name, icon: chosen }; state.sections.push(sec); save();
+    const sec = { id: "s-" + uid(), name, icon: chosen, color }; state.sections.push(sec); save();
     closeSheet(s); haptic(); setTimeout(() => openSection(sec.id), 260);
   }, true);
 }
 /* Aufgabe bearbeiten / schnell anlegen */
-function openTaskEditor(taskId, presetSection) {
+function openTaskEditor(taskId, presetSection, presetDue) {
   const isNew = !taskId;
-  const t = isNew ? { text: "", note: "", section: presetSection || "heute", done: false } : state.tasks.find(x => x.id === taskId);
+  const t = isNew ? { text: "", note: "", section: presetSection || "heute", done: false, due: presetDue || null } : state.tasks.find(x => x.id === taskId);
   if (!t) return;
-  let section = t.section, armed = false;
+  let section = t.section, armed = false, due = t.due || null;
+  const dueChips = () => { const td = todayYmd(), tm = ymd(addDays(new Date(), 1));
+    return `<button type="button" class="chip" data-due="${td}" aria-pressed="${due === td}">Heute</button><button type="button" class="chip" data-due="${tm}" aria-pressed="${due === tm}">Morgen</button><button type="button" class="chip" data-due="" aria-pressed="${!due}">Ohne Datum</button>`; };
   const s = openSheet(() => `
     <div class="sheet-head"><h2 class="sec-title">${isNew ? "Neue Aufgabe" : "Bearbeiten"}</h2><button class="close" data-close aria-label="Schließen">${SVG_CLOSE}</button></div>
     <form id="edForm" class="actions">
       <div class="field"><textarea id="edText" rows="2" maxlength="2000" placeholder="Was ist zu tun?" enterkeyhint="done">${esc(t.text)}</textarea></div>
       <div class="field"><span class="label">Notiz</span><textarea id="edNote" rows="3" maxlength="5000" placeholder="Details, Link, Größe, Preis …">${esc(t.note || "")}</textarea></div>
+      <div class="field"><span class="label">Datum</span><div class="date-row"><input type="date" id="edDue" value="${due || ""}" aria-label="Datum"><div class="chips" id="dueChips">${dueChips()}</div></div></div>
       <div class="field"><span class="label">Bereich</span><div class="chips">${state.sections.map(x => `<button type="button" class="chip" data-sec="${esc(x.id)}" aria-pressed="${x.id === section}">${esc(x.name)}</button>`).join("")}</div></div>
       <button class="btn primary" type="submit">${isNew ? "Hinzufügen" : "Fertig"}</button>
       ${isNew ? "" : `<div class="row2"><button type="button" class="btn" data-act="edToggle">${t.done ? "Wieder öffnen" : "Erledigt"}</button><button type="button" class="btn danger${armed ? " armed" : ""}" data-act="edDelete">${armed ? "Wirklich löschen?" : "Löschen"}</button></div>`}
@@ -521,24 +572,146 @@ function openTaskEditor(taskId, presetSection) {
   const read = () => ({ text: $("#edText", s.el).value, note: $("#edNote", s.el).value });
   s.el.addEventListener("click", e => {
     const c = e.target.closest("[data-sec]");
+    const dc = e.target.closest("[data-due]");
+    if (dc) { due = dc.dataset.due || null; $("#edDue", s.el).value = due || ""; $("#dueChips", s.el).innerHTML = dueChips(); return; }
     if (c && c.classList.contains("chip")) { section = c.dataset.sec; s.el.querySelectorAll(".chip[data-sec]").forEach(x => x.setAttribute("aria-pressed", x.dataset.sec === section)); return; }
     const b = e.target.closest("[data-act]"); if (!b) return;
-    if (b.dataset.act === "edToggle") { const v = read(); t.text = v.text.trim() || t.text; t.note = v.note.trim(); t.section = section; const r = setDone(t, !t.done); if (t.done) { haptic(); toast(growMessage(r)); } closeSheet(s); }
+    if (b.dataset.act === "edToggle") { const v = read(); t.text = v.text.trim() || t.text; t.note = v.note.trim(); t.section = section; t.due = due; const r = setDone(t, !t.done); if (t.done) { haptic(); toast(growMessage(r)); } closeSheet(s); }
     if (b.dataset.act === "edDelete") {
       if (!armed) { armed = true; b.classList.add("armed"); b.textContent = "Wirklich löschen?"; return; }
       closeSheet(s); deleteTask(t.id);
     }
   });
+  $("#edDue", s.el).addEventListener("change", e => { due = e.target.value || null; $("#dueChips", s.el).innerHTML = dueChips(); });
   $("#edText", s.el).addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#edForm", s.el).requestSubmit(); } });
   s.el.addEventListener("submit", e => {
     e.preventDefault(); e.stopPropagation();
     const v = read();
     if (!v.text.trim()) { $("#edText", s.el).focus(); return; }
-    if (isNew) { addTask(section, v.text, v.note); haptic(); toast(`Zu „${secById(section).name}“ hinzugefügt.`); }
-    else { t.text = v.text.trim(); t.note = v.note.trim(); t.section = section; save(); }
+    if (isNew) { addTask(section, v.text, v.note, due); haptic(); toast(`Zu „${secById(section).name}“ hinzugefügt${due ? " · " + dueLabel(due) : ""}.`); }
+    else { t.text = v.text.trim(); t.note = v.note.trim(); t.section = section; t.due = due; save(); }
     closeSheet(s);
   }, true);
 }
+
+/* ---------- Kalender ---------- */
+let calMonth = null, calSel = null;
+function defaultSectionFor(day) {
+  const diff = Math.round((parseYmd(day) - parseYmd(todayYmd())) / 86400000);
+  const pick = diff <= 0 ? ["heute"] : diff <= 7 ? ["woche", "heute"] : ["monat", "woche", "heute"];
+  return pick.find(id => secById(id)) || "heute";
+}
+function secInk(id) { const s = secById(id); return s && !s.fixed ? (TONES[s.color] || TONES.sage).ink : "var(--accent)"; }
+function openCalendar() {
+  const now = new Date(); calSel = calSel || todayYmd();
+  calMonth = calMonth || new Date(now.getFullYear(), now.getMonth(), 1);
+  const s = openSheet(() => {
+    const y = calMonth.getFullYear(), m = calMonth.getMonth(), first = new Date(y, m, 1);
+    const start = addDays(first, -((first.getDay() + 6) % 7)), td = todayYmd();
+    const byDay = {};
+    for (const t of state.tasks) if (t.due) (byDay[t.due] = byDay[t.due] || []).push(t);
+    let cells = "";
+    for (let i = 0; i < 42; i++) {
+      const d = addDays(start, i), k = ymd(d), list = byDay[k] || [], open = list.filter(t => !t.done);
+      if (i === 35 && d.getMonth() !== m) break;
+      const dots = list.slice(0, 4).map(t => `<i style="background:${t.done ? "var(--line-strong)" : secInk(t.section)}"></i>`).join("");
+      cells += `<button type="button" class="cal-day${d.getMonth() !== m ? " out" : ""}${k === td ? " is-today" : ""}${k === calSel ? " sel" : ""}${open.length && k < td ? " late" : ""}" data-day="${k}" aria-label="${d.getDate()}. ${MO[d.getMonth()]}${list.length ? ", " + list.length + " Aufgaben" : ""}"><span>${d.getDate()}</span><b class="dots">${dots}</b></button>`;
+    }
+    const dayTasks = (byDay[calSel] || []).slice().sort((a, b) => a.done - b.done || a.createdAt - b.createdAt);
+    const upcoming = state.tasks.filter(t => t.due && !t.done && t.due !== calSel).sort((a, b) => a.due < b.due ? -1 : a.due > b.due ? 1 : a.createdAt - b.createdAt);
+    const late = upcoming.filter(t => t.due < td), next = upcoming.filter(t => t.due >= td).slice(0, 12);
+    const group = list => { let out = "", cur = null; for (const t of list) { if (t.due !== cur) { cur = t.due; out += `<li class="cal-group">${dueLabel(cur)}</li>`; } out += taskRow(t).replace('class="task', `style="--sec-ink:${secInk(t.section)}" class="task with-sec`).replace('<span class="txt">', `<span class="sec-name">${esc((secById(t.section) || {}).name || "")}</span><span class="txt">`); } return out; };
+    return `
+      <div class="sheet-head"><h2 class="sec-title">Kalender</h2><button class="close" data-close aria-label="Schließen">${SVG_CLOSE}</button></div>
+      <div class="cal">
+        <div class="cal-nav"><button type="button" class="close" data-cal="-1" aria-label="Voriger Monat">‹</button><span class="cal-title">${MO[m]} ${y}</span><button type="button" class="close" data-cal="1" aria-label="Nächster Monat">›</button></div>
+        <div class="cal-grid">${["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map(w => `<span class="cal-wd">${w}</span>`).join("")}${cells}</div>
+        ${calSel !== td || m !== now.getMonth() || y !== now.getFullYear() ? `<button type="button" class="linkbtn cal-today" data-cal="today">Zu heute</button>` : ""}
+      </div>
+      <div class="cal-dayhead"><h3>${(() => { const d = parseYmd(calSel); return `${WD[d.getDay()]}, ${d.getDate()}. ${MO[d.getMonth()]}`; })()}</h3><button type="button" class="pill" data-act="calAdd">${"+ Aufgabe"}</button></div>
+      <ul class="list">${dayTasks.length ? dayTasks.map(t => taskRow(t).replace('class="task', `style="--sec-ink:${secInk(t.section)}" class="task with-sec`).replace('<span class="txt">', `<span class="sec-name">${esc((secById(t.section) || {}).name || "")}</span><span class="txt">`)).join("") : `<li class="empty">Nichts geplant.</li>`}</ul>
+      ${late.length ? `<span class="label" style="color:var(--danger)">Überfällig</span><ul class="list">${group(late)}</ul>` : ""}
+      ${next.length ? `<span class="label">Demnächst</span><ul class="list">${group(next)}</ul>` : ""}
+      ${!late.length && !next.length && !dayTasks.length ? `<p class="hint">Gib einer Aufgabe ein Datum, dann erscheint sie hier. Tippe dazu auf die Aufgabe und wähle unter „Datum“ einen Tag.</p>` : ""}`;
+  });
+  s.el.addEventListener("click", e => {
+    const nav = e.target.closest("[data-cal]");
+    if (nav) {
+      if (nav.dataset.cal === "today") { const n = new Date(); calMonth = new Date(n.getFullYear(), n.getMonth(), 1); calSel = todayYmd(); }
+      else calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + +nav.dataset.cal, 1);
+      s.render(); return;
+    }
+    const day = e.target.closest("[data-day]");
+    if (day) { calSel = day.dataset.day; const d = parseYmd(calSel); if (d.getMonth() !== calMonth.getMonth()) calMonth = new Date(d.getFullYear(), d.getMonth(), 1); haptic(); s.render(); return; }
+    if (e.target.closest('[data-act="calAdd"]')) openTaskEditor(null, defaultSectionFor(calSel), calSel);
+  });
+  // Wischen links/rechts wechselt den Monat
+  let sx = null;
+  s.el.addEventListener("touchstart", e => { if (e.target.closest(".cal-grid")) sx = [e.touches[0].clientX, e.touches[0].clientY]; }, { passive: true });
+  s.el.addEventListener("touchend", e => {
+    if (!sx) return; const dx = e.changedTouches[0].clientX - sx[0], dy = e.changedTouches[0].clientY - sx[1]; sx = null;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) { calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + (dx < 0 ? 1 : -1), 1); s.render(); }
+  });
+}
+
+/* ---------- Kacheln verschieben (gedrückt halten) ---------- */
+let tileDrag = null, suppressTileClick = false;
+document.addEventListener("pointerdown", e => {
+  const tile = e.target.closest("#grid .tile[data-tile]"); if (!tile || e.button > 0 || tileDrag) return;
+  const d = { tile, id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, active: false, tx: 0, ty: 0 };
+  d.timer = setTimeout(() => startTileDrag(d), 420);
+  tileDrag = d;
+});
+function startTileDrag(d) {
+  if (tileDrag !== d) return;
+  d.active = true; haptic();
+  d.grid = $("#grid"); d.grid.classList.add("reordering");
+  d.tile.classList.add("lifted");
+  d.tile.style.transition = "none";
+}
+function tileCenters(d) {
+  return [...d.grid.querySelectorAll(".tile[data-tile]")].filter(t => t !== d.tile).map(t => { const r = t.getBoundingClientRect(); return { t, cx: r.left + r.width / 2, cy: r.top + r.height / 2 }; });
+}
+document.addEventListener("pointermove", e => {
+  const d = tileDrag; if (!d || e.pointerId !== d.id) return;
+  d.x = e.clientX; d.y = e.clientY;
+  if (!d.active) { if (Math.hypot(d.x - d.x0, d.y - d.y0) > 9) { clearTimeout(d.timer); tileDrag = null; } return; }
+  // Ziel: die Kachel, über deren Mitte der Finger ist
+  const over = tileCenters(d).find(c => { const r = c.t.getBoundingClientRect(); return d.x > r.left && d.x < r.right && d.y > r.top && d.y < r.bottom; });
+  if (over) {
+    const tiles = [...d.grid.querySelectorAll(".tile[data-tile]")];
+    const from = tiles.indexOf(d.tile), to = tiles.indexOf(over.t);
+    const before = new Map(tiles.map(t => [t, t.getBoundingClientRect()]));
+    if (from < to) over.t.after(d.tile); else over.t.before(d.tile);
+    for (const t of tiles) if (t !== d.tile) { // FLIP für die anderen Kacheln
+      const a = before.get(t), b = t.getBoundingClientRect();
+      if (a.left !== b.left || a.top !== b.top) { t.style.transition = "none"; t.style.transform = `translate(${a.left - b.left}px,${a.top - b.top}px)`; requestAnimationFrame(() => { t.style.transition = "transform .25s cubic-bezier(.2,.8,.2,1)"; t.style.transform = ""; }); }
+    }
+    haptic();
+  }
+  const r = d.tile.getBoundingClientRect(), natX = r.left - d.tx, natY = r.top - d.ty;
+  if (d.nx === undefined) { d.nx = d.x0 - natX; d.ny = d.y0 - natY; }
+  d.tx = d.x - d.nx - natX; d.ty = d.y - d.ny - natY;
+  d.tile.style.transform = `translate(${d.tx}px,${d.ty}px) scale(1.04)`;
+});
+document.addEventListener("touchmove", e => { if (tileDrag && tileDrag.active) e.preventDefault(); }, { passive: false });
+function endTileDrag(e) {
+  const d = tileDrag; if (!d || (e && e.pointerId !== d.id)) return;
+  clearTimeout(d.timer); tileDrag = null;
+  if (!d.active) return;
+  suppressTileClick = true; setTimeout(() => suppressTileClick = false, 400);
+  d.tile.style.transition = "transform .25s cubic-bezier(.2,.8,.2,1)"; d.tile.style.transform = "";
+  d.grid.classList.remove("reordering");
+  setTimeout(() => {
+    d.tile.classList.remove("lifted");
+    const order = [...d.grid.querySelectorAll(".tile[data-tile]")].map(t => t.dataset.tile);
+    state.sections = state.sections.filter(x => x.fixed).concat(order.map(secById).filter(Boolean));
+    save(); renderGrid();
+  }, 250);
+}
+document.addEventListener("pointerup", endTileDrag);
+document.addEventListener("pointercancel", endTileDrag);
+document.addEventListener("contextmenu", e => { if (e.target.closest("#grid .tile")) e.preventDefault(); });
 
 /* ---------- Backup ---------- */
 function backupPayload() {
@@ -690,7 +863,7 @@ document.addEventListener("pointercancel", endSwipe);
 document.addEventListener("click", e => {
   if (suppressNextClick) { suppressNextClick = false; if (e.target.closest(".task-fg")) { e.preventDefault(); return; } }
   const open = e.target.closest("[data-open]");
-  if (open) { openSection(open.dataset.open); return; }
+  if (open) { if (suppressTileClick) { suppressTileClick = false; return; } openSection(open.dataset.open); return; }
   const b = e.target.closest("[data-act]"); if (!b) return;
   const act = b.dataset.act, li = b.closest(".task");
   switch (act) {
@@ -742,6 +915,7 @@ $("#fab").addEventListener("click", () => {
   openTaskEditor(null, sec);
 });
 $("#openSettings").addEventListener("click", openSettings);
+$("#openCalendar").addEventListener("click", openCalendar);
 document.addEventListener("keydown", e => { if (e.key === "Escape" && sheets.length) closeSheet(sheets[sheets.length - 1]); });
 
 /* ---------- Offline & Updates ---------- */

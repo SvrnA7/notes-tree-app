@@ -56,9 +56,9 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: var(--sat)
 @media (min-width: 820px) { .layout { display: grid; grid-template-columns: 1.2fr 1fr; gap: 18px; align-items: start; } }
 
 /* Heute */
-.today { position: relative; overflow: hidden; border-radius: var(--radius); background: var(--surface); min-height: 680px; display: flex; flex-direction: column; box-shadow: 0 14px 40px -30px var(--shadow); }
+.today { position: relative; overflow: hidden; border-radius: var(--radius); background: var(--surface); min-height: 800px; display: flex; flex-direction: column; box-shadow: 0 14px 40px -30px var(--shadow); }
 .today::before { content: ""; position: absolute; width: 620px; height: 620px; border-radius: 50%; background: var(--disk); left: 50%; bottom: -320px; transform: translateX(-50%); }
-.tree { position: absolute; left: 50%; bottom: 40px; transform: translateX(-50%); width: min(560px, 104%); height: auto; pointer-events: none; }
+.tree { position: absolute; left: 50%; bottom: 50px; transform: translateX(-50%); width: min(640px, 104%); height: auto; pointer-events: none; }
 .today-inner { position: relative; z-index: 1; padding: 20px 14px 14px; display: flex; flex-direction: column; gap: 12px; }
 .today-head { display: flex; justify-content: space-between; align-items: baseline; gap: 6px 12px; flex-wrap: wrap; padding: 0 4px; }
 .sec-title { font-family: var(--f-display); font-weight: 500; text-transform: uppercase; letter-spacing: .18em; font-size: 22px; margin: 0; color: var(--accent); line-height: 1.2; }
@@ -164,14 +164,24 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: var(--sat)
 .ios-share { display: inline-block; width: 16px; height: 16px; vertical-align: -2px; stroke: var(--accent); fill: none; stroke-width: 1.6; }
 
 /* Baum */
-.tree .br { fill: none; stroke: var(--bark); stroke-linecap: round; }
-.tree .lf { fill: var(--leaf); }
-.tree .lf.alt { fill: var(--leaf-2); }
-.tree .ground { fill: none; stroke: var(--bark); stroke-width: 1; opacity: .5; stroke-linecap: round; }
+.tree .br { fill: url(#barkG); }
+.tree .bark-line { fill: none; stroke: #6A5644; stroke-width: 1.1; opacity: .35; stroke-linecap: round; }
+.tree .lf path { fill: var(--leaf); }
+.tree .lf .vein { fill: none; stroke: #6E7B4C; stroke-width: .7; opacity: .45; stroke-linecap: round; }
+.tree .lf.t1 path:first-child { fill: #8A9A64; }
+.tree .lf.t2 path:first-child { fill: #C2CB98; }
+.tree .lf.t3 path:first-child { fill: var(--leaf-2); }
+.tree .lf.t3 .vein { stroke: #9C7F4E; }
+.tree .fl .pt { fill: #F6EBD8; stroke: #E2CDAF; stroke-width: .5; }
+.tree .fl .ct { fill: #C99A6E; }
+.tree .fl.berry circle { fill: #B9765C; }
+.tree .grass path { fill: none; stroke: #9AA673; stroke-width: 1.2; stroke-linecap: round; opacity: .8; }
+.tree .pebble { fill: #DCCFBB; }
 .tree .h { display: none; }
-.tree .sprout.br { stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw 1.1s ease-out forwards; }
-.tree .sprout.lf { transform-box: fill-box; transform-origin: 0% 50%; animation: pop .7s cubic-bezier(.3,1.6,.5,1) both; }
-@keyframes draw { to { stroke-dashoffset: 0; } }
+.tree .sprout.br { animation: growlimb 1.1s cubic-bezier(.25,.8,.3,1) both; }
+.tree .sprout.lf, .tree .sprout.fl { transform-box: fill-box; transform-origin: 0% 50%; animation: pop .7s cubic-bezier(.3,1.6,.5,1) both; }
+.tree .sprout.fl { transform-origin: 50% 50%; }
+@keyframes growlimb { from { transform: scale(0); opacity: 0; } 30% { opacity: 1; } to { transform: scale(1); opacity: 1; } }
 @keyframes pop { from { transform: scale(0); } to { transform: scale(1); } }
 
 /* Toast */
@@ -183,5 +193,4 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: var(--sat)
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
-  .tree .sprout.br { stroke-dashoffset: 0; }
 }

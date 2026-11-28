@@ -2,7 +2,7 @@
 /* Blattwerk · Notizen & Aufgaben
    Daten: nur lokal (IndexedDB, Rückfall localStorage). Backup als JSON-Datei über das iOS-Teilen-Menü. */
 
-const APP_VERSION = "1.0.0";
+const APP_VERSION = "1.1.0";
 const $ = (s, el = document) => el.querySelector(s);
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -129,54 +129,125 @@ function daysSince(ts) { return Math.floor((Date.now() - ts) / 86400000); }
 
 /* ---------- Baum ---------- */
 function rng(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const NS = "http://www.w3.org/2000/svg";
+const LEAF_D = "M0 0C3.5-5.2 10.5-7 17-.6C10.8 6.2 3.8 5.4 0 0Z";
+const LEAF_V = "M1.2 0C6 -.6 11 -.7 15.6 -.5";
 function buildTree() {
-  const R = rng(271126), items = [], UP = -Math.PI / 2, MAXL = 5;
-  const q = (x, y, mx, my, ex, ey, t) => { const u = 1 - t; return [u * u * x + 2 * u * t * mx + t * t * ex, u * u * y + 2 * u * t * my + t * t * ey]; };
-  const leaf = (x, y, ang, birth, s) => items.push({ k: "l", x, y, a: ang * 180 / Math.PI, s, birth, alt: R() < .35 });
-  function branch(x, y, ang, len, w, level, birth) {
-    const ex = x + Math.cos(ang) * len, ey = y + Math.sin(ang) * len, bend = (R() - .5) * len * .4;
-    const mx = (x + ex) / 2 + Math.cos(ang + Math.PI / 2) * bend, my = (y + ey) / 2 + Math.sin(ang + Math.PI / 2) * bend;
-    items.push({ k: "b", d: `M${x.toFixed(1)} ${y.toFixed(1)}Q${mx.toFixed(1)} ${my.toFixed(1)} ${ex.toFixed(1)} ${ey.toFixed(1)}`, w, level, birth });
-    if (level >= 1) {
-      const n = 2 + Math.floor(R() * 3);
+  const R = rng(271126), items = [], UP = -Math.PI / 2, MAXL = 6, BX = 300, BY = 600;
+  const q = (b, t) => { const u = 1 - t; return [u * u * b.x + 2 * u * t * b.mx + t * t * b.ex, u * u * b.y + 2 * u * t * b.my + t * t * b.ey]; };
+  // Blatt: Farbton nach Höhe/Zufall (außen heller, innen dunkler, ein paar ockerfarbene)
+  const leaf = (x, y, ang, birth, s, level) => {
+    const r = R(); let tone = r < .12 ? 3 : r < .38 ? 2 : r < .72 ? 0 : 1;
+    if (level <= 2 && tone === 2) tone = 1;
+    items.push({ k: "l", x, y, a: ang * 180 / Math.PI, s, birth, tone });
+  };
+  function branch(x, y, ang, len, w0, w1, level, birth) {
+    const ex = x + Math.cos(ang) * len, ey = y + Math.sin(ang) * len, bend = (R() - .5) * len * (level === 0 ? .18 : .42);
+    const b = { k: "b", x, y, ex, ey, w0, w1, level, birth,
+      mx: (x + ex) / 2 + Math.cos(ang + Math.PI / 2) * bend, my: (y + ey) / 2 + Math.sin(ang + Math.PI / 2) * bend };
+    items.push(b);
+    if (level >= 2) {
+      const n = 2 + Math.floor(R() * (level >= 4 ? 4 : 3));
       for (let i = 0; i < n; i++) {
-        const t = .3 + .6 * (i / n) + R() * .1, [px, py] = q(x, y, mx, my, ex, ey, t);
-        leaf(px, py, ang + (i % 2 ? 1 : -1) * (.7 + R() * .6), birth + .3 + t * .9 + R() * 1.1, .75 + R() * .55);
+        const t = .25 + .65 * (i / n) + R() * .1, [px, py] = q(b, t), side = i % 2 ? 1 : -1;
+        leaf(px, py, ang + side * (.65 + R() * .6), birth + .3 + t * .9 + R() * 1.1, .7 + R() * .5, level);
       }
     }
+    if (level === 1 && R() < .5) { // kleine Seitentriebe am Stamm-Ast
+      const t = .45 + R() * .3, [px, py] = q(b, t), side = R() < .5 ? -1 : 1;
+      branch(px, py, ang + side * (.9 + R() * .3), len * .38, w1 * .55, w1 * .2, 5, birth + 1.2 + R());
+    }
     if (level < MAXL) {
-      const n = level === 0 ? 3 : (R() < .35 ? 3 : 2), spread = level === 0 ? .62 : .5 + R() * .2;
+      const n = level === 0 ? 3 : (R() < .38 ? 3 : 2), spread = level === 0 ? .66 : .48 + R() * .22;
       for (let i = 0; i < n; i++) {
-        let a = ang + (i - (n - 1) / 2) * spread + (R() - .5) * .35;
-        a = a * .86 + UP * .14;
-        branch(ex, ey, a, len * (.7 + R() * .14), w * .64, level + 1, birth + 1 + R() * 1.4);
+        let a = ang + (i - (n - 1) / 2) * spread + (R() - .5) * .34;
+        a = a * .85 + UP * .15;
+        const main = n === 3 ? i === 1 : i === (R() < .5 ? 0 : 1), k = main ? .8 : .66;
+        branch(ex, ey, a, len * (main ? .76 : .66) * (.92 + R() * .16), w1 * (main ? .9 : .78), w1 * k * .66, level + 1, birth + 1 + R() * 1.4);
       }
-    } else for (let i = 0; i < 3; i++) leaf(ex, ey, ang + (i - 1) * .7, birth + .6 + R() * 1.4, .8 + R() * .5);
+    } else {
+      const n = 4 + Math.floor(R() * 2);
+      for (let i = 0; i < n; i++) leaf(ex, ey, ang + (i - (n - 1) / 2) * .55, birth + .6 + R() * 1.4, .8 + R() * .45, level);
+      if (R() < .24) items.push({ k: "f", x: ex + Math.cos(ang) * 3, y: ey + Math.sin(ang) * 3, r: R() * 72, s: .8 + R() * .5, birth: birth + 2.4 + R() * 2, berry: R() < .3 });
+    }
   }
-  branch(200, 452, UP, 108, 15, 0, 0);
+  branch(BX, BY, UP, 150, 26, 15, 0, 0);
+  // Wurzeln, immer sichtbar
+  const roots = [[-1, .9, 46], [1, .8, 52], [-1, .35, 30], [1, .3, 26]].map(([side, lift, len]) => {
+    const sx = BX + side * 7, ex = BX + side * (len + 14), ey = BY + 6 - lift * 2;
+    return { k: "r", x: sx, y: BY - 6, mx: BX + side * (len * .45), my: BY + 3, ex, ey, w0: 9 * (lift + .4), w1: 1.2, level: 0, birth: -1 };
+  });
   items.sort((a, b) => a.birth - b.birth);
-  return items;
+  return { items, roots, BX, BY };
 }
-const TREE = buildTree(), PER_TASK = 4, NS = "http://www.w3.org/2000/svg";
+const TR = buildTree(), TREE = TR.items;
+const PER_TASK = Math.max(4, Math.round((TREE.length - 1) / 280));
 const TASKS_FOR_FULL = Math.ceil((TREE.length - 1) / PER_TASK);
 let shownCount = 0;
+// verjüngter Ast als gefüllte Form entlang einer quadratischen Kurve
+function limbPath(b, f) {
+  const N = 9, L = [], Rr = [];
+  for (let i = 0; i <= N; i++) {
+    const t = i / N, u = 1 - t;
+    const x = u * u * b.x + 2 * u * t * b.mx + t * t * b.ex, y = u * u * b.y + 2 * u * t * b.my + t * t * b.ey;
+    const dx = 2 * u * (b.mx - b.x) + 2 * t * (b.ex - b.mx), dy = 2 * u * (b.my - b.y) + 2 * t * (b.ey - b.my), dl = Math.hypot(dx, dy) || 1;
+    let w = Math.max(.55, (b.w0 + (b.w1 - b.w0) * t) * f / 2);
+    if (b.k === "b" && b.level === 0) w += Math.pow(u, 5) * 12 * f; // Stammfuß
+    L.push([x - dy / dl * w, y + dx / dl * w]); Rr.push([x + dy / dl * w, y - dx / dl * w]);
+  }
+  const p = a => a[0].toFixed(1) + " " + a[1].toFixed(1), r = b.w1 * f / 2;
+  let d = "M" + p(L[0]) + L.slice(1).map(a => "L" + p(a)).join("");
+  d += `A${r.toFixed(1)} ${r.toFixed(1)} 0 0 0 ${p(Rr[N])}` + Rr.slice(0, N).reverse().map(a => "L" + p(a)).join("") + "Z";
+  if (b.k === "b" && b.level > 0 && b.level < 4) { const j = b.w0 * f / 2; d += `M${(b.x - j).toFixed(1)} ${b.y.toFixed(1)}a${j.toFixed(1)} ${j.toFixed(1)} 0 1 0 ${(2 * j).toFixed(1)} 0a${j.toFixed(1)} ${j.toFixed(1)} 0 1 0 ${(-2 * j).toFixed(1)} 0`; }
+  return d;
+}
+function treeBounds() {
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity;
+  for (const it of TREE) { const pad = it.k === "l" ? 18 * it.s : it.k === "f" ? 8 : 4, x = it.k === "b" ? it.ex : it.x, y = it.k === "b" ? it.ey : it.y;
+    x0 = Math.min(x0, x - pad); x1 = Math.max(x1, x + pad); y0 = Math.min(y0, y - pad); }
+  const half = Math.max(TR.BX - x0, x1 - TR.BX) + 12;
+  return [TR.BX - half, y0 - 12, half * 2, TR.BY + 26 - (y0 - 12)];
+}
+function el(tag, attrs) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; }
 function renderTreeSkeleton() {
   const svg = $("#tree"); svg.innerHTML = "";
-  const ground = document.createElementNS(NS, "path");
-  ground.setAttribute("class", "ground"); ground.setAttribute("d", "M110 454 Q200 444 290 454 M150 460 Q200 455 250 460");
-  const gB = document.createElementNS(NS, "g"), gL = document.createElementNS(NS, "g");
-  svg.append(ground, gB, gL);
+  svg.setAttribute("viewBox", treeBounds().map(v => v.toFixed(0)).join(" "));
+  svg.innerHTML = `<defs>
+    <linearGradient id="barkG" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#6F5A47"/><stop offset=".45" stop-color="#8C7660"/><stop offset="1" stop-color="#A08A72"/></linearGradient>
+    <radialGradient id="shadowG"><stop offset="0" stop-color="#8C7660" stop-opacity=".28"/><stop offset="1" stop-color="#8C7660" stop-opacity="0"/></radialGradient>
+  </defs>`;
+  const { BX, BY } = TR;
+  svg.appendChild(el("ellipse", { cx: BX, cy: BY + 4, rx: 150, ry: 13, fill: "url(#shadowG)" }));
+  // Gräser und Steinchen
+  const G = rng(77), grass = el("g", { class: "grass" });
+  for (let i = 0; i < 26; i++) {
+    const x = BX + (G() - .5) * 250, h = 5 + G() * 9, lean = (G() - .5) * 7;
+    if (Math.abs(x - BX) < 16) continue;
+    grass.appendChild(el("path", { d: `M${x.toFixed(1)} ${BY + 4}q${(lean * .3).toFixed(1)} ${(-h * .6).toFixed(1)} ${lean.toFixed(1)} ${(-h).toFixed(1)}` }));
+  }
+  svg.appendChild(grass);
+  [[-92, 2.6], [104, 3.2], [-58, 1.8], [70, 2]].forEach(([dx, r]) => svg.appendChild(el("ellipse", { class: "pebble", cx: BX + dx, cy: BY + 5, rx: r * 1.5, ry: r })));
+  const gR = el("g", { class: "limbs" }), gB = el("g", { class: "limbs" }), gL = el("g"), gF = el("g");
+  svg.append(gR, gB, gL, gF);
+  for (const r of TR.roots) { r.el = el("path", { class: "br" }); gR.appendChild(r.el); }
   for (const it of TREE) {
     if (it.k === "b") {
-      const el = document.createElementNS(NS, "path");
-      el.setAttribute("d", it.d); el.setAttribute("pathLength", "1"); el.setAttribute("class", "br h");
-      gB.appendChild(el); it.el = el;
+      it.el = el("path", { class: "br h" }); it.el.style.transformOrigin = `${it.x.toFixed(1)}px ${it.y.toFixed(1)}px`; gB.appendChild(it.el);
+      if (it.level === 0) { // Rindenlinien am Stamm
+        it.bark = el("path", { class: "bark-line h", d: `M${TR.BX - 5} ${TR.BY - 8}C${TR.BX - 7} ${TR.BY - 50} ${TR.BX - 2} ${TR.BY - 90} ${TR.BX - 3} ${TR.BY - 128}M${TR.BX + 6} ${TR.BY - 14}C${TR.BX + 4} ${TR.BY - 46} ${TR.BX + 7} ${TR.BY - 70} ${TR.BX + 4} ${TR.BY - 104}` });
+        gB.appendChild(it.bark);
+      }
+    } else if (it.k === "l") {
+      const g = el("g", { transform: `translate(${it.x.toFixed(1)} ${it.y.toFixed(1)}) rotate(${it.a.toFixed(0)}) scale(${it.s.toFixed(2)})` });
+      it.el = el("g", { class: "lf h t" + it.tone });
+      it.el.append(el("path", { d: LEAF_D }), el("path", { class: "vein", d: LEAF_V }));
+      g.appendChild(it.el); gL.appendChild(g);
     } else {
-      const g = document.createElementNS(NS, "g");
-      g.setAttribute("transform", `translate(${it.x.toFixed(1)} ${it.y.toFixed(1)}) rotate(${it.a.toFixed(0)}) scale(${it.s.toFixed(2)})`);
-      const el = document.createElementNS(NS, "path");
-      el.setAttribute("d", "M0 0C3-4.6 9-4.8 13 0C9 4.8 3 4.6 0 0Z"); el.setAttribute("class", "lf h" + (it.alt ? " alt" : ""));
-      g.appendChild(el); gL.appendChild(g); it.el = el;
+      const g = el("g", { transform: `translate(${it.x.toFixed(1)} ${it.y.toFixed(1)}) rotate(${it.r.toFixed(0)}) scale(${it.s.toFixed(2)})` });
+      it.el = el("g", { class: "fl h" + (it.berry ? " berry" : "") });
+      if (it.berry) it.el.innerHTML = `<circle cx="-2" cy="1" r="2.6"/><circle cx="2.2" cy="-1.2" r="2.3"/><circle cx="1" cy="2.8" r="2"/>`;
+      else it.el.innerHTML = [0, 72, 144, 216, 288].map(a => `<ellipse class="pt" rx="2.4" ry="3.6" transform="rotate(${a}) translate(0 -3.4)"/>`).join("") + `<circle class="ct" r="1.7"/>`;
+      g.appendChild(it.el); gF.appendChild(g);
     }
   }
   // Zweig-Deko im Kopf
@@ -185,25 +256,28 @@ function renderTreeSkeleton() {
 }
 function updateTree(animate) {
   const target = Math.min(TREE.length, 1 + state.grown * PER_TASK);
-  const thick = .8 * (.38 + .62 * Math.min(1, target / TREE.length * 1.5));
+  const f = .42 + .58 * Math.min(1, target / TREE.length * 1.4);
   let nb = 0, nl = 0;
+  for (const r of TR.roots) r.el.setAttribute("d", limbPath(r, f));
   TREE.forEach((it, i) => {
     const vis = i < target;
-    if (it.k === "b") it.el.setAttribute("stroke-width", (it.w * thick).toFixed(2));
+    if (it.k === "b" && vis) it.el.setAttribute("d", limbPath(it, f));
     if (vis && it.el.classList.contains("h")) {
-      it.el.classList.remove("h");
-      if (animate) { it.el.classList.add("sprout"); it.el.style.animationDelay = (Math.random() * .25).toFixed(2) + "s"; it.k === "b" ? nb++ : nl++; }
-    } else if (!vis && !it.el.classList.contains("h")) { it.el.classList.add("h"); it.el.classList.remove("sprout"); }
+      it.el.classList.remove("h"); if (it.bark) it.bark.classList.remove("h");
+      if (animate) { it.el.classList.add("sprout"); it.el.style.animationDelay = (Math.random() * .3).toFixed(2) + "s"; it.k === "b" ? nb++ : nl++; }
+    } else if (!vis && !it.el.classList.contains("h")) { it.el.classList.add("h"); it.el.classList.remove("sprout"); if (it.bark) it.bark.classList.add("h"); }
   });
+  const trunk = TREE.find(x => x.bark); if (trunk) trunk.bark.classList.toggle("h", f < .8);
   shownCount = target;
-  const shown = TREE.slice(0, target), b = shown.filter(x => x.k === "b").length, l = target - b, g = state.grown;
-  $("#treeStats").textContent = g === 0 ? "Erledige eine Aufgabe, dann wächst er." : `${g} erledigt · ${b} ${b === 1 ? "Ast" : "Äste"} · ${l} ${l === 1 ? "Blatt" : "Blätter"}`;
+  const shown = TREE.slice(0, target), b = shown.filter(x => x.k === "b").length, l = shown.filter(x => x.k === "l").length, fl = shown.filter(x => x.k === "f").length, g = state.grown;
+  $("#treeStats").textContent = g === 0 ? "Erledige eine Aufgabe, dann wächst er." :
+    `${g} erledigt · ${b} ${b === 1 ? "Ast" : "Äste"} · ${l} ${l === 1 ? "Blatt" : "Blätter"}` + (fl ? ` · ${fl} ${fl === 1 ? "Blüte" : "Blüten"}` : "");
   return { nb, nl };
 }
 function growMessage({ nb, nl }) {
   const g = state.grown;
   if (shownCount >= TREE.length && g === TASKS_FOR_FULL) return "Dein Baum ist ausgewachsen. Wunderbar!";
-  if ([10, 25, 50, 100, 150, 200].includes(g)) return `${g} Aufgaben erledigt. Dein Baum wird groß.`;
+  if ([10, 25, 50, 100, 150, 200, 250].includes(g)) return `${g} Aufgaben erledigt. Dein Baum wird groß.`;
   if (nb && nl) return nb === 1 ? `Ein neuer Zweig und ${nl === 1 ? "ein Blatt" : nl + " Blätter"}.` : `${nb} neue Zweige wachsen.`;
   if (nb) return nb === 1 ? "Ein neuer Zweig wächst." : `${nb} neue Zweige wachsen.`;
   if (nl) return nl === 1 ? "Ein neues Blatt." : `${nl} neue Blätter.`;

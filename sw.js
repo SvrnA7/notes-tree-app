@@ -1,5 +1,5 @@
 /* Blattwerk Service Worker: alles offline verfügbar, Updates auf Knopfdruck */
-const VERSION = "blattwerk-1.0.0";
+const VERSION = "blattwerk-1.1.0";
 const ASSETS = [
   "./",
   "index.html",

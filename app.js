@@ -1,8 +1,8 @@
 "use strict";
-/* Blattwerk · Notizen & Aufgaben
+/* Wanna Do · Notizen & Aufgaben
    Daten: nur lokal (IndexedDB, Rückfall localStorage). Backup als JSON-Datei über das iOS-Teilen-Menü. */
 
-const APP_VERSION = "1.1.0";
+const APP_VERSION = "1.2.0";
 const $ = (s, el = document) => el.querySelector(s);
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -547,13 +547,13 @@ function backupPayload() {
 async function doBackup() {
   await flush();
   const d = new Date(), stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  const name = `blattwerk-backup-${stamp}.json`;
+  const name = `wanna-do-backup-${stamp}.json`;
   const json = JSON.stringify(backupPayload(), null, 2);
   const file = new File([json], name, { type: "application/json" });
   let ok = false;
   try {
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({ files: [file], title: "Blattwerk Backup" });
+      await navigator.share({ files: [file], title: "Wanna Do Backup" });
       ok = true;
     }
   } catch (e) {
@@ -576,7 +576,7 @@ function parseBackup(text) {
 async function importBackup(file) {
   let incoming;
   try { incoming = parseBackup(await file.text()); }
-  catch (e) { toast("Diese Datei ist kein Blattwerk-Backup."); return; }
+  catch (e) { toast("Diese Datei ist kein Wanna-Do-Backup."); return; }
   const n = incoming.tasks.length;
   const s = openSheet(() => `
     <div class="sheet-head"><h2 class="sec-title">Backup laden</h2><button class="close" data-close aria-label="Schließen">${SVG_CLOSE}</button></div>
@@ -630,13 +630,13 @@ function openSettings() {
       <h3>Auf ein neues iPhone übertragen</h3>
       <ol>
         <li>Hier auf „Backup sichern“ tippen und die Datei per AirDrop senden oder in „Dateien“ (z. B. iCloud Drive) sichern.</li>
-        <li>Auf dem neuen Gerät Blattwerk zum Home-Bildschirm hinzufügen und öffnen.</li>
+        <li>Auf dem neuen Gerät Wanna Do zum Home-Bildschirm hinzufügen und öffnen.</li>
         <li>„Backup laden“ tippen und die Datei auswählen.</li>
       </ol>
     </div>
-    ${isStandalone() ? "" : `<div class="card"><h3>Als App installieren</h3><p>In Safari auf ${SVG_SHARE} Teilen tippen, dann „Zum Home-Bildschirm“. Danach startet Blattwerk wie eine App, auch ohne Internet.</p></div>`}
+    ${isStandalone() ? "" : `<div class="card"><h3>Als App installieren</h3><p>In Safari auf ${SVG_SHARE} Teilen tippen, dann „Zum Home-Bildschirm“. Danach startet Wanna Do wie eine App, auch ohne Internet.</p></div>`}
     <div class="actions"><button class="btn danger${armed ? " armed" : ""}" data-act="wipe">${armed ? "Sicher? Alles wird gelöscht" : "Alle Daten löschen"}</button></div>
-    <p style="margin:0;text-align:center;font-size:12px;color:var(--muted)">Blattwerk ${APP_VERSION}</p>`;
+    <p style="margin:0;text-align:center;font-size:12px;color:var(--muted)">Wanna Do ${APP_VERSION}</p>`;
   });
   s.el.addEventListener("click", async e => {
     const b = e.target.closest("[data-act]"); if (!b) return;

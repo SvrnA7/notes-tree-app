@@ -1,4 +1,4 @@
-# Blattwerk
+# Wanna Do
 
 Notizen und Aufgaben mit einem Baum, der mit jeder erledigten Aufgabe wächst.
 

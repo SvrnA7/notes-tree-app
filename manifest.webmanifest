@@ -1,6 +1,6 @@
 {
-  "name": "Blattwerk",
-  "short_name": "Blattwerk",
+  "name": "Wanna Do",
+  "short_name": "Wanna Do",
   "description": "Notizen und Aufgaben mit einem Baum, der mit jeder erledigten Aufgabe wächst.",
   "lang": "de",
   "start_url": "./",
